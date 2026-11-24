@@ -8,6 +8,7 @@ import { averages, excludedCoreSet } from '../lib/spending.js';
 import { dollars, pct, signedDollars, money, privacyText } from '../lib/format.js';
 import { monthLabel, monthLabelLong, formatDate, daysBetween } from '../lib/dates.js';
 import { ACCOUNT_GROUPS } from '@shared/accountTypes.js';
+import { buildBalanceIndex, creditCardBalanceProjection } from '../lib/balances.js';
 
 const lower = (s) => String(s ?? '').toLowerCase();
 
@@ -40,23 +41,20 @@ function Onboarding({ data }) {
   );
 }
 
-// Credit card owed = last recorded balance + charges since then - payments since then.
-// Charges are only added while the recorded balance is recent (about one statement
-// cycle); after that the balance is shown as recorded, since payments made outside
-// Mynance would otherwise be missed. Cards with no recorded balance aren't estimated.
-const CARD_ESTIMATE_DAYS = 45;
-function creditCardOutstanding(data, core, today) {
+// Credit-card balances use the same transaction rules as the Activity page:
+// expenses charged to the card increase owed; payments targeting the card reduce it.
+function creditCardOutstanding(data, today) {
   const cards = data.config.accounts.filter((a) => a.type === 'credit_card' && !a.archived);
+  const index = buildBalanceIndex(data.records.balances);
   return cards.map((card) => {
-    const row = core.current.rows.find((r) => r.account === card);
-    const asOf = row?.asOf || null;
-    if (!asOf) return { card, asOf, recorded: 0, charges: 0, payments: 0, owed: 0, status: 'none' };
-    const recent = daysBetween(asOf, today) <= CARD_ESTIMATE_DAYS;
-    const after = (r, key) => lower(r[key]) === lower(card.name) && r.date > asOf && r.date <= today;
-    const charges = recent ? data.records.expenses.filter((e) => after(e, 'payment_method')).reduce((s, e) => s + (e.amount || 0), 0) : 0;
-    const payments = recent ? data.records.activity.filter((a) => after(a, 'account')).reduce((s, a) => s + (a.amount || 0), 0) : 0;
-    const recorded = row.value || 0;
-    return { card, asOf, recorded, charges, payments, owed: Math.max(0, recorded + charges - payments), status: recent ? 'estimated' : 'stale' };
+    const projection = creditCardBalanceProjection(card, index, data.records.expenses, data.records.activity, today);
+    if (!projection) return { card, asOf: null, recorded: 0, charges: 0, payments: 0, owed: 0, projected: 0, pending: 0, status: 'none' };
+    return {
+      card, asOf: projection.asOf, recorded: projection.recorded,
+      charges: projection.charges, payments: projection.payments,
+      owed: projection.current, projected: projection.projected, pending: projection.pending,
+      status: projection.pending ? 'pending' : 'estimated',
+    };
   });
 }
 
@@ -75,7 +73,7 @@ export default function Dashboard() {
   const avg = useMemo(() => averages(ledger(data), win.start, win.end, { exclude: excluded }), [data, win.start, win.end, excluded]);
   const eoy = useMemo(() => endOfYearNetWorth(core, inputs, today), [core, inputs, today]);
   const salary = useMemo(() => salaryNow(data, today), [data, today]);
-  const cards = useMemo(() => creditCardOutstanding(data, core, today), [data, core, today]);
+  const cards = useMemo(() => creditCardOutstanding(data, today), [data, today]);
   const cardTotal = cards.reduce((s, c) => s + c.owed, 0);
 
   const prev = core.series.length >= 2 ? core.series[core.series.length - 2] : null;
@@ -172,8 +170,8 @@ export default function Dashboard() {
               ? 'No credit cards yet'
               : cards.some((c) => c.status === 'none')
                 ? `${cards.filter((c) => c.status === 'none').length} card${cards.filter((c) => c.status === 'none').length > 1 ? 's have' : ' has'} no balance recorded`
-                : cards.some((c) => c.charges)
-                  ? `incl. ${dollars(cards.reduce((s, c) => s + c.charges, 0))} charged since last balance`
+                : cards.some((c) => c.pending)
+                  ? `current balance · ${dollars(cards.reduce((s, c) => s + c.pending, 0))} net pending · projected ${dollars(cards.reduce((s, c) => s + c.projected, 0))}`
                   : `${cards.length} card${cards.length > 1 ? 's' : ''}, unpaid balance`
           }
           onClick={() => (window.location.hash = '/balances')}
@@ -314,7 +312,7 @@ export default function Dashboard() {
                           <div className="title">{r.account.name}</div>
                           <div className={`sub ${stale ? 'warn' : ''}`}>
                             {r.asOf ? `as of ${formatDate(r.asOf)}` : 'no balance recorded'}
-                            {card && card.charges ? ` · +${dollars(card.charges)} charges since` : ''}
+                            {card && card.pending ? ` · ${dollars(card.pending)} pending · projected ${dollars(card.projected)}` : ''}
                           </div>
                         </div>
                         <div className="amount">{r.value === null ? '—' : g.liability ? dollars(-r.value) : dollars(r.value)}</div>

@@ -197,6 +197,7 @@ export function ActivityForm({ initial, onDone }) {
   const [f, setF] = useState(() => ({
     date: today,
     account: '',
+    target_account: '',
     category: '',
     notes: '',
     ...(initial || {}),
@@ -210,6 +211,7 @@ export function ActivityForm({ initial, onDone }) {
     if (f.amount === '') return setError('Enter an amount');
     if (!f.account) return setError('Choose an account');
     if (!f.category) return setError('Choose a category');
+    if (/credit.?card|card.?payment/i.test(f.category) && !f.target_account) return setError('Choose the credit card being paid');
     const rec = { ...f, amount: dir === 'out' ? -Math.abs(f.amount) : Math.abs(f.amount) };
     const ok = await run(async () => {
       if (editing) await update('activity', initial.id, rec);
@@ -238,12 +240,17 @@ export function ActivityForm({ initial, onDone }) {
         <Field label="Amount" className="full">
           <MoneyInput big value={f.amount} onChange={(v) => set('amount', v)} autoFocus />
         </Field>
-        <Field label="Account">
+        <Field label={/credit.?card|card.?payment/i.test(f.category) ? 'Paid from account' : 'Account'}>
           <Select value={f.account} onChange={(v) => set('account', v)} options={accountOptions(config, { keep: initial?.account })} placeholder="Choose…" />
         </Field>
         <Field label="Category">
-          <Select value={f.category} onChange={(v) => set('category', v)} options={activityCategoryOptions(config, initial?.category)} placeholder="Choose…" />
+          <Select value={f.category} onChange={(v) => { set('category', v); if (!/credit.?card|card.?payment/i.test(v)) set('target_account', ''); }} options={activityCategoryOptions(config, initial?.category)} placeholder="Choose…" />
         </Field>
+        {config.accounts.some((a) => a.type === 'credit_card' && !a.archived) && /credit.?card|card.?payment/i.test(f.category) && (
+          <Field label="Credit card being paid" className="full">
+            <Select value={f.target_account || ''} onChange={(v) => set('target_account', v)} options={config.accounts.filter((a) => a.type === 'credit_card' && !a.archived).map((a) => ({ value: a.name, label: a.name }))} placeholder="Choose the card…" />
+          </Field>
+        )}
         <DateField value={f.date} onChange={(v) => set('date', v)} today={today} />
         {f.date > today && <div className="small ink-2 full">Future date: this will be marked Pending and excluded from totals until its date arrives.</div>}
         <Field label="Notes">
