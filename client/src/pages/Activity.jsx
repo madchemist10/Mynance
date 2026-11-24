@@ -46,9 +46,13 @@ export default function Activity() {
       const base = valueAsOf(balanceIndex, acc.name, today);
       if (!base) return null;
       const changes = data.records.activity
-        .filter((a) => lower(a.account) === lower(acc.name) && a.date > base.date)
-        .reduce((sum, a) => sum + (a.amount || 0), 0);
-      return { account: acc.name, asOf: base.date, balance: base.balance + changes, pending: data.records.activity.filter((a) => lower(a.account) === lower(acc.name) && a.date > today).reduce((sum, a) => sum + (a.amount || 0), 0) };
+        .filter((a) => a.date > base.date)
+        .reduce((sum, a) => {
+          if (lower(a.account) === lower(acc.name)) sum += a.amount || 0;
+          if (acc.type === 'credit_card' && /credit.?card|card.?payment/i.test(a.category || '') && lower(a.target_account) === lower(acc.name)) sum -= Math.abs(a.amount || 0);
+          return sum;
+        }, 0);
+      return { account: acc.name, asOf: base.date, balance: base.balance + changes, pending: data.records.activity.filter((a) => a.date > today).reduce((sum, a) => sum + (lower(a.account) === lower(acc.name) ? (a.amount || 0) : 0) - (acc.type === 'credit_card' && /credit.?card|card.?payment/i.test(a.category || '') && lower(a.target_account) === lower(acc.name) ? Math.abs(a.amount || 0) : 0), 0) };
     }).filter(Boolean);
   }, [data.config.accounts, data.records.activity, balanceIndex, today, account]);
   const estimatedBalance = balanceEstimates.reduce((sum, row) => sum + row.balance, 0);
@@ -105,7 +109,7 @@ export default function Activity() {
                   <div className="list-item clickable" key={a.id} onClick={() => openForm('activity', a)} role="button" tabIndex={0} onKeyDown={(ev) => ev.key === 'Enter' && openForm('activity', a)}>
                     <div className="grow">
                       <div className="title">
-                        {a.account} <span className="badge">{a.category}</span> {a.date > today && <span className="badge warn">Pending</span>}
+                        {a.account} <span className="badge">{a.category}</span>{a.target_account ? <span className="badge">for {a.target_account}</span> : null} {a.date > today && <span className="badge warn">Pending</span>}
                         {incomeCats.has(lower(a.category)) && <span className="badge good" style={{ marginLeft: 4 }}>income</span>}
                       </div>
                       <div className="sub">

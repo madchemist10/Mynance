@@ -15,9 +15,9 @@ and back them up by copying the folder.
   categories you can switch off, account balances, and daily/monthly averages.
 - **Expenses**: date, amount, vendor, payment method, category, subcategory, notes. Typing a
   known vendor fills in its usual category and payment method.
-- **Account activity**: deposits, transfers, contributions, credit card payments and interest.
+- **Account activity**: deposits, transfers, contributions, credit card payments and interest. Credit-card payments identify the specific card being paid.
   Activity categories can count as income.
-- **Balances**: record every account's balance for a day on one screen. Investment accounts
+- **Balances**: record every account's balance for a day on one screen. Missing daily entries are automatically carried forward for non-archived accounts; manually entered daily values take precedence. Credit-card balances are recalculated from card purchases and payments. Investment accounts
   also record the total contributed.
 - **Income**: paychecks with gross, bonus, federal/state/FICA taxes, 401(k)/Roth/HSA, medical,
   dental, vision and net. Each new paycheck is pre-filled from the previous one. Salary history
@@ -127,7 +127,7 @@ data/
     settings.json           preferences, projection and retirement assumptions
   records/
     expenses.csv            date,amount,vendor,payment_method,category,subcategory,notes,id
-    account-activity.csv    date,amount,account,category,notes,id
+    account-activity.csv    date,amount,account,target_account,category,notes,id
     balances.csv            date,account,balance,contributed,notes,id
     paychecks.csv           date,employer,gross,bonus,federal_tax,state_tax,...,net,employer_match,notes,id
     salary.csv              date,employer,title,salary,notes,id
@@ -139,10 +139,16 @@ Conventions:
 - Dates are `YYYY-MM-DD`. Amounts are plain numbers (`1234.50`), with no `$` or commas.
 - **Expenses**: positive for a purchase, negative for a refund.
 - **Account activity**: positive when money goes *into* the account (a deposit, a
-  contribution, a credit card payment), negative when it leaves.
-- **Balances**: one row per account per day. For credit cards, mortgages and loans, enter the
-  amount owed as a positive number. `contributed` is the running total you've put into an
-  investment account. Leave it blank and the last value carries forward.
+  contribution, a credit card payment), negative when it leaves. For a *Credit Card Payment*,
+  `account` is the account the money moves from and `target_account` is the credit card
+  whose balance is being reduced. Other activity leaves `target_account` blank.
+- **Balances**: one row per account per day. Mynance fills missing dates for every
+  non-archived account by carrying forward the previous day's balance and contribution
+  total. An explicitly entered balance for a date overrides the generated value.
+  Credit-card balances are computed daily from the last manually entered balance anchor,
+  plus expenses charged to that card, less payments explicitly targeted to that card.
+  Refunds (negative expenses) reduce the amount owed. `contributed` carries forward when
+  left blank.
 - Records refer to accounts and categories **by name**, so the files stay readable. Rename
   things in **Settings** and every record that uses the name is updated with it.
 - Files are written atomically and kept sorted by date. You can edit them while the app is
@@ -173,7 +179,7 @@ Conventions:
 | Core spending | All expenses except categories marked *not core* (Tithe, Charity and Vehicle by default). |
 | Daily / monthly averages | Totals over the window ÷ days (or days ÷ 30.44). The window starts no earlier than your first record. |
 | Months of operating cash | Cash accounts ÷ average monthly spending (all categories). |
-| Credit cards owed | Latest recorded balance + expenses charged since then − payments recorded since then. New charges are only added while the recorded balance is recent (45 days); cards with no recorded balance aren't estimated. |
+| Credit cards owed | Daily balance history starts from the latest manual balance anchor and adds expenses charged to that card, then subtracts payments explicitly targeted to that card. Refunds reduce the balance. Manual entries override the computed balance on their date. |
 | Monthly % gain | (end value − start value − contributions) ÷ (start value + contributions ÷ 2). Contributions come from changes in *contributed*, or from account activity when that isn't recorded. |
 | Annualized return | Monthly gains chained together and annualized (time-weighted, so deposits don't count as growth). |
 | Salary vs investments | Investments ÷ current salary (or the last 12 months of gross pay when there's no salary entry). |

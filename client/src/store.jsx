@@ -55,16 +55,19 @@ export function DataProvider({ children }) {
       async create(collection, rec) {
         const saved = await api.post(`/api/records/${collection}`, rec);
         patchRecords(collection, (list) => sortByDate([...list, saved]));
+        if (collection === 'expenses' || collection === 'activity') await load();
         return saved;
       },
       async update(collection, id, rec) {
         const saved = await api.put(`/api/records/${collection}/${id}`, rec);
         patchRecords(collection, (list) => sortByDate(list.map((r) => (r.id === id ? saved : r))));
+        if (collection === 'expenses' || collection === 'activity') await load();
         return saved;
       },
       async remove(collection, id) {
         await api.del(`/api/records/${collection}/${id}`);
         patchRecords(collection, (list) => list.filter((r) => r.id !== id));
+        if (collection === 'expenses' || collection === 'activity') await load();
       },
       async saveBalances(records) {
         const res = await api.post('/api/records/balances/batch', { records });

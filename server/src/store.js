@@ -80,6 +80,13 @@ export function checkRefs(name, rec, ctx) {
     if (!acc) errors.push(`Unknown account "${rec.account}"`);
     else rec.account = acc.name;
   }
+  if (name === 'activity' && rec.target_account && !/credit.?card|card.?payment/i.test(rec.category || '')) errors.push('Only credit card payment activity can target a credit card');
+  if (name === 'activity' && rec.target_account) {
+    const target = ctx.accounts.get(lower(rec.target_account));
+    if (!target) errors.push(`Unknown target account "${rec.target_account}"`);
+    else if (target.type !== 'credit_card') errors.push('Payment target must be a credit card');
+    else rec.target_account = target.name;
+  }
   if (name === 'activity') {
     const cat = ctx.activity.get(lower(rec.category));
     if (!cat) errors.push(`Unknown activity category "${rec.category}"`);
@@ -271,6 +278,39 @@ export class Store {
       const config = await this.readAllConfig();
       const records = {};
       for (const name of COLLECTION_NAMES) records[name] = await this.readRecords(name);
+      // Fill every missing day through today. Manual entries take precedence.
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const accounts = config.accounts.filter((a) => !a.archived);
+      const generatedRows = records.balances.filter((b) => b.notes === 'Automatically carried forward');
+      const generatedIds = new Map(generatedRows.map((b) => [`${lower(b.account)}|${b.date}`, b.id]));
+      const balances = records.balances.filter((b) => b.notes !== 'Automatically carried forward');
+      const makeId = (accountName, date) => generatedIds.get(`${lower(accountName)}|${date}`) || crypto.randomUUID();
+      for (const account of accounts) {
+        const history = balances.filter((b) => lower(b.account) === lower(account.name)).sort((a,b) => a.date.localeCompare(b.date));
+        if (!history.length) continue;
+        const manualByDate = new Map(history.map((b) => [b.date, b]));
+        let previous = null;
+        let cursor = history[0].date;
+        while (cursor <= today) {
+          const manual = manualByDate.get(cursor);
+          if (manual) previous = manual;
+          else if (previous) {
+            let balance = previous.balance;
+            if (account.type === 'credit_card') {
+              const charges = records.expenses.filter((e) => e.date === cursor && lower(e.payment_method) === lower(account.name)).reduce((n,e) => n + (e.amount || 0), 0);
+              const payments = records.activity.filter((a) => a.date === cursor && /credit.?card|card.?payment/i.test(a.category || '') && lower(a.target_account) === lower(account.name)).reduce((n,a) => n + Math.abs(a.amount || 0), 0);
+              balance = Math.max(0, Math.round((balance + charges - payments) * 100) / 100);
+            }
+            const generated = { date: cursor, account: account.name, balance, contributed: previous.contributed ?? null, notes: 'Automatically carried forward', id: makeId(account.name, cursor) };
+            balances.push(generated);
+            previous = generated;
+          }
+          cursor = new Date(Date.parse(cursor + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10);
+        }
+      }
+      const normalizedBalances = sortByDate(balances);
+      if (JSON.stringify(normalizedBalances) !== JSON.stringify(records.balances)) records.balances = await this.writeRecords('balances', normalizedBalances);
       return { config, records };
     });
   }
@@ -398,7 +438,7 @@ export class Store {
           throw new HttpError(409, `"${to}" is already in use`);
         }
         configChanges.push(['accounts', accounts.map((a) => (a === acc ? { ...a, name: to } : a))]);
-        updates.activity = (r) => (same(r.account, from) ? { ...r, account: to } : r);
+        updates.activity = (r) => ({ ...r, ...(same(r.account, from) ? { account: to } : {}), ...(same(r.target_account, from) ? { target_account: to } : {}) });
         updates.balances = (r) => (same(r.account, from) ? { ...r, account: to } : r);
         updates.expenses = (r) => (same(r.payment_method, from) ? { ...r, payment_method: to } : r);
       } else if (kind === 'paymentMethod') {

@@ -26,6 +26,7 @@ export const COLLECTIONS = {
       date('date', { required: true }),
       money('amount', { required: true }),
       text('account', { required: true }),
+      text('target_account'),
       text('category', { required: true }),
       text('notes'),
     ],
