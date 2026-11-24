@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { addMonths, monthRange, daysBetween, monthEnd, addDays } from './dates.js';
-import { buildBalanceIndex, valueAsOf, snapshot, monthlySnapshots, monthlyInvestmentReturns, dailyInvestmentReturns, annualizeReturns } from './balances.js';
+import { buildBalanceIndex, valueAsOf, snapshot, monthlySnapshots, monthlyInvestmentReturns, dailyInvestmentReturns, annualizeReturns, creditCardBalanceProjection } from './balances.js';
 import { paycheckTotals, monthlyCashflow, averages, expenseBreakdown, currentSalary, salaryHistory, nextPaycheckDate } from './spending.js';
 import { itemMonthAmount, budgetByMonth, budgetVsActual, burnDown, projectSpending } from './budget.js';
 import { projectNetWorth, retirementPlan, projectInvestments } from './projections.js';
@@ -79,6 +79,36 @@ describe('balances', () => {
     const s = monthlySnapshots(accounts, index, '2026-01', '2026-03', '2026-03-10');
     expect(s.map((x) => x.date)).toEqual(['2026-01-31', '2026-02-28', '2026-03-10']);
     expect(s[1].investments).toBe(31600);
+  });
+});
+
+describe('credit-card projections', () => {
+  const card = { name: 'Visa', type: 'credit_card' };
+  const index = buildBalanceIndex([{ date: '2026-05-01', account: 'Visa', balance: 500 }]);
+  const expenses = [
+    { date: '2026-05-05', amount: 80, payment_method: 'Visa' },
+    { date: '2026-05-20', amount: 40, payment_method: 'Visa' },
+    { date: '2026-06-05', amount: 120, payment_method: 'Visa' },
+  ];
+  const activity = [
+    { date: '2026-05-10', amount: -100, category: 'Credit Card Payment', target_account: 'Visa', account: 'Checking' },
+    { date: '2026-06-10', amount: -50, category: 'Credit Card Payment', target_account: 'Visa', account: 'Checking' },
+    { date: '2026-06-11', amount: -25, category: 'Credit Card Payment', target_account: 'Mastercard', account: 'Checking' },
+  ];
+
+  it('includes current purchases and targeted payments in current balance', () => {
+    const result = creditCardBalanceProjection(card, index, expenses, activity, '2026-05-31');
+    expect(result.current).toBe(520);
+    expect(result.pending).toBe(70);
+    expect(result.projected).toBe(590);
+  });
+
+  it('includes future-dated card expenses and payments only in projected balance', () => {
+    const result = creditCardBalanceProjection(card, index, expenses, activity, '2026-05-31');
+    expect(result.charges).toBe(120);
+    expect(result.payments).toBe(100);
+    expect(result.pending).toBe(70);
+    expect(result.projected).toBe(result.current + 120 - 50);
   });
 });
 

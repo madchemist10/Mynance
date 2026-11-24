@@ -104,6 +104,8 @@ Conventions
 - account-activity.csv: amount is positive for money into the account
   (deposit, contribution, credit card payment) and negative for money out. For a credit
   card payment, account is the source account and target_account names the card being paid.
+  The Activity page's projected balances also include future-dated activity and card expenses
+  or payments; those pending transactions do not change the saved balance until their date.
 - balances.csv: Mynance fills missing daily rows for non-archived accounts by carrying
   forward the prior day balance and investment contribution total. Manual entries win.
   Credit-card daily balances add purchases and refunds charged to the card and subtract

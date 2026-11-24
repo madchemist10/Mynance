@@ -38,6 +38,42 @@ export function valueAsOf(index, account, date) {
   return list[lo];
 }
 
+
+const isCardPayment = (activity) => /credit.?card|card.?payment/i.test(activity?.category || '');
+
+// Credit-card balances are owed amounts: purchases increase the balance and
+// payments assigned to target_account reduce it. Future-dated rows are included
+// only in `projected`, never in `current`.
+export function creditCardBalanceProjection(account, index, expenses, activity, today) {
+  const base = valueAsOf(index, account.name, today);
+  if (!base) return null;
+  const chargesAfterBase = expenses.filter((e) =>
+    lower(e.payment_method) === lower(account.name) && e.date > base.date
+  );
+  const paymentsAfterBase = activity.filter((a) =>
+    isCardPayment(a) && lower(a.target_account) === lower(account.name) && a.date > base.date
+  );
+  const chargeTotal = (rows) => rows.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  const paymentTotal = (rows) => rows.reduce((sum, a) => sum + Math.abs(Number(a.amount) || 0), 0);
+  const currentCharges = chargeTotal(chargesAfterBase.filter((e) => e.date <= today));
+  const currentPayments = paymentTotal(paymentsAfterBase.filter((a) => a.date <= today));
+  const futureCharges = chargeTotal(chargesAfterBase.filter((e) => e.date > today));
+  const futurePayments = paymentTotal(paymentsAfterBase.filter((a) => a.date > today));
+  const current = Math.max(0, Math.round((Number(base.balance || 0) + currentCharges - currentPayments) * 100) / 100);
+  const projected = Math.max(0, Math.round((current + futureCharges - futurePayments) * 100) / 100);
+  const pending = Math.round((projected - current) * 100) / 100;
+  return {
+    account: account.name,
+    asOf: base.date,
+    recorded: Number(base.balance || 0),
+    charges: currentCharges,
+    payments: currentPayments,
+    current,
+    pending,
+    projected,
+  };
+}
+
 export function firstBalanceDate(balances) {
   let min = null;
   for (const b of balances) if (b.date && (!min || b.date < min)) min = b.date;

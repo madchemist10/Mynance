@@ -15,8 +15,7 @@ and back them up by copying the folder.
   categories you can switch off, account balances, and daily/monthly averages.
 - **Expenses**: date, amount, vendor, payment method, category, subcategory, notes. Typing a
   known vendor fills in its usual category and payment method.
-- **Account activity**: deposits, transfers, contributions, credit card payments and interest. Credit-card payments identify the specific card being paid.
-  Activity categories can count as income.
+- **Account activity**: deposits, transfers, contributions, credit card payments and interest. Credit-card payments identify the specific card being paid. The Activity page shows both the estimated balance through today and a projected balance that includes future-dated account activity, credit-card purchases/refunds and payments targeted to each card.
 - **Balances**: record every account's balance for a day on one screen. Missing daily entries are automatically carried forward for non-archived accounts; manually entered daily values take precedence. Credit-card balances are recalculated from card purchases and payments. Investment accounts
   also record the total contributed.
 - **Income**: paychecks with gross, bonus, federal/state/FICA taxes, 401(k)/Roth/HSA, medical,
@@ -179,7 +178,7 @@ Conventions:
 | Core spending | All expenses except categories marked *not core* (Tithe, Charity and Vehicle by default). |
 | Daily / monthly averages | Totals over the window ÷ days (or days ÷ 30.44). The window starts no earlier than your first record. |
 | Months of operating cash | Cash accounts ÷ average monthly spending (all categories). |
-| Credit cards owed | Daily balance history starts from the latest manual balance anchor and adds expenses charged to that card, then subtracts payments explicitly targeted to that card. Refunds reduce the balance. Manual entries override the computed balance on their date. |
+| Credit cards owed | Daily balance history starts from the latest manual balance anchor and adds expenses charged to that card, then subtracts payments explicitly targeted to that card. Refunds reduce the balance. Manual entries override the computed balance on their date. Activity's current estimate includes transactions through today; its projected estimate additionally includes future-dated card expenses/refunds and targeted payments. Future transactions do not change today's saved balance until their date arrives. |
 | Monthly % gain | (end value − start value − contributions) ÷ (start value + contributions ÷ 2). Contributions come from changes in *contributed*, or from account activity when that isn't recorded. |
 | Annualized return | Monthly gains chained together and annualized (time-weighted, so deposits don't count as growth). |
 | Salary vs investments | Investments ÷ current salary (or the last 12 months of gross pay when there's no salary entry). |

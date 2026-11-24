@@ -7,7 +7,7 @@ import { money, dollars } from '../lib/format.js';
 import { monthKey, monthLabelLong, formatDate } from '../lib/dates.js';
 import { accountOptions, activityCategoryOptions } from '../lib/options.js';
 import { periodRange, periodOptions } from './Expenses.jsx';
-import { buildBalanceIndex, valueAsOf } from '../lib/balances.js';
+import { buildBalanceIndex, valueAsOf, creditCardBalanceProjection } from '../lib/balances.js';
 
 const lower = (s) => String(s ?? '').toLowerCase();
 
@@ -46,17 +46,23 @@ export default function Activity() {
       const base = valueAsOf(balanceIndex, acc.name, today);
       if (!base) return null;
       const changes = data.records.activity
-        .filter((a) => a.date > base.date)
+        .filter((a) => a.date > base.date && a.date <= today)
         .reduce((sum, a) => {
           if (lower(a.account) === lower(acc.name)) sum += a.amount || 0;
           if (acc.type === 'credit_card' && /credit.?card|card.?payment/i.test(a.category || '') && lower(a.target_account) === lower(acc.name)) sum -= Math.abs(a.amount || 0);
           return sum;
         }, 0);
-      return { account: acc.name, asOf: base.date, balance: base.balance + changes, pending: data.records.activity.filter((a) => a.date > today).reduce((sum, a) => sum + (lower(a.account) === lower(acc.name) ? (a.amount || 0) : 0) - (acc.type === 'credit_card' && /credit.?card|card.?payment/i.test(a.category || '') && lower(a.target_account) === lower(acc.name) ? Math.abs(a.amount || 0) : 0), 0) };
+      if (acc.type === 'credit_card') {
+        const card = creditCardBalanceProjection(acc, balanceIndex, data.records.expenses, data.records.activity, today);
+        return card ? { account: acc.name, asOf: card.asOf, balance: card.current, pending: card.pending, projected: card.projected } : null;
+      }
+      const pending = data.records.activity.filter((a) => a.date > today && lower(a.account) === lower(acc.name)).reduce((sum, a) => sum + (a.amount || 0), 0);
+      return { account: acc.name, asOf: base.date, balance: base.balance + changes, pending, projected: base.balance + changes + pending };
     }).filter(Boolean);
-  }, [data.config.accounts, data.records.activity, balanceIndex, today, account]);
+  }, [data.config.accounts, data.records.activity, data.records.expenses, balanceIndex, today, account]);
   const estimatedBalance = balanceEstimates.reduce((sum, row) => sum + row.balance, 0);
   const pendingImpact = balanceEstimates.reduce((sum, row) => sum + row.pending, 0);
+  const projectedBalance = balanceEstimates.reduce((sum, row) => sum + row.projected, 0);
 
   const groups = useMemo(() => {
     const out = [];
@@ -90,6 +96,7 @@ export default function Activity() {
 
       <div className="tiles">
         <Stat label="Estimated account balance" value={balanceEstimates.length ? dollars(estimatedBalance) : '—'} sub={balanceEstimates.length ? `${balanceEstimates.length} account${balanceEstimates.length === 1 ? '' : 's'} · pending impact ${pendingImpact >= 0 ? '+' : ''}${dollars(pendingImpact)}` : 'Record an account balance to start an estimate'} />
+        <Stat label="Projected account balance" value={balanceEstimates.length ? dollars(projectedBalance) : '—'} sub="Includes future-dated activity and card expenses/payments" />
         <Stat label="Money in" value={dollars(moneyIn)} />
         <Stat label="Money out" value={dollars(-moneyOut)} />
         <Stat label="Counted as income" value={dollars(income)} />
